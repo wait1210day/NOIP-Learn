@@ -520,7 +520,12 @@ int main()
 		AST.travesalEachNode_MRO(nodePrint, AST.root());
 		cout << endl << "AST Calculation (LRO_NODETRVAL): " << AST.calculator() << endl;
 	}
-	
+	catch (runtime_error *except)
+	{
+		cerr << "Program aborted after throwing an RuntimeException: \n\t";
+		cerr << except->what() << endl;
+		delete except;
+	}
 	
 	return 0;
 }
