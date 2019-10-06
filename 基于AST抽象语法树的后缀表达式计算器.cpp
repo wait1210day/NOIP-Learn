@@ -1,15 +1,23 @@
 #include <iostream>
+#include <sstream>
 #include <exception>
 #include <stdexcept>
+#include <algorithm>
+#include <stack>
+#include <string>
+#include <map>
 using namespace std;
 
 #define AST_LEFT 	1
 #define AST_RIGHT 	2
 #define NODE_OPERATOR 	0
 #define NODE_NUMBER		1
+
 #define OPERATOR	0
 #define NUMBER		1
 #define UNKNOW		2
+#define PRIFLAG1	3
+#define PRIFLAG2	4
 
 union ExpSymbols
 {
@@ -353,67 +361,166 @@ int getTokenType(string& token)
 		|| token[0] == '*' || token[0] == '/')
 		return OPERATOR;
 	
+	if (token[0] == '(')
+		return PRIFLAG1;
+	if (token[0] == ')')
+		return PRIFLAG2;
+	
+	bool floating = false;
 	for (char& byte : token)
+	{
 		if (byte >= '0' && byte <= '9')
 			numberCount++;
+		if (byte == '.' && !floating)
+		{
+			floating = true;
+			numberCount++;
+		}
+	}
 	if (numberCount == token.length())
 		return NUMBER;
 		
 	return UNKNOW;
 }
 
+void prefixExpressionASTConstructor(exptree& ept, stack<string>& prefixExpr)
+{
+	string token;
+	double num;
+	bool rootWrote = false;
+	
+	while (!prefixExpr.empty())
+	{
+		token = prefixExpr.top();
+		switch (getTokenType(token))
+		{
+			case NUMBER:
+				num = atof(token.data());
+				cout << "Prefix Parser: Insert number: " << num << endl;
+				while (ept.newNode(ept.nodeDataConstructor(num)) == nullptr)
+					ept.movIteratorRoot();
+				break;
+				
+			case OPERATOR:
+				cout << "Prefix Parser: Insert operator: " << token << endl;
+			
+				if (ept.thisNode() == ept.root() && !rootWrote)
+				{
+					ept.thisNode()->data.arithmeticOperator = token[0];
+					rootWrote = true;
+					break;
+				}
+	
+				while (ept.newNode(ept.nodeDataConstructor(token[0])) == nullptr)
+					ept.movIteratorRoot();
+						
+				ept.movIteratorToNewNode();
+				break;
+				
+			case UNKNOW:
+				cout << "Prefix Parser: Invalid input: " << token << endl;
+				break;
+		}
+		prefixExpr.pop();
+	}
+}
+
+void infixToPrefix(stack<string>& infix, stack<string>& prefix)
+{
+	string token;
+	char markTop[2];
+	markTop[1] = '\0';
+	
+	stack<char> mark;
+
+    map<char, int> priority;
+    priority['+'] = 0;
+    priority['-'] = 0;
+    priority['*'] = 1;
+    priority['/'] = 1;
+    
+    while (!infix.empty())
+	{
+		token = infix.top();
+		
+        switch (getTokenType(token))
+		{
+            case NUMBER:
+                prefix.push(token);
+                break;
+                
+            case OPERATOR:
+                if (!mark.empty())
+				{
+                    *markTop = mark.top();
+
+                    while(*markTop != ')' && priority[token[0]] < priority[*markTop])
+					{
+                        prefix.push(markTop);
+                        
+                        mark.pop();
+                        
+                        if (mark.empty())
+                            break;
+                        *markTop = mark.top();
+                    }
+                }
+                mark.push(token[0]);
+                break;
+                
+            case PRIFLAG2:
+                mark.push(')');
+                break;
+                
+            case PRIFLAG1:
+            	{
+                    *markTop = mark.top();
+	                
+	                while(*markTop != ')')
+					{
+                        prefix.push(markTop);
+	                    
+	                    mark.pop();
+	                    *markTop = mark.top();
+	                }
+	                mark.pop();
+            	}
+                break;
+            default:
+            	throw new runtime_error("Infix Parser: Invalid input \'" + token + "\'");
+            	break;
+        }
+        
+        infix.pop();
+    }
+
+    while(!mark.empty())
+	{
+		*markTop = mark.top();
+        prefix.push(markTop);
+        mark.pop();
+    }
+}
+
 int main()
 {
-	exptree ept;
+	stack<string> prefix, infix;
+	string buf;
+	exptree AST;
+	
+	while (cin >> buf)
+		infix.push(buf);
 	
 	try
 	{
-		string token;
-		int num;
-		bool rootWrote = false;
-		
-		while (cin >> token)
-		{
-			switch (getTokenType(token))
-			{
-				case NUMBER:
-					num = atoi(token.data());
-					cout << "PRPCOR: Insert number: " << num << endl;
-					while (ept.newNode(ept.nodeDataConstructor((double)num)) == nullptr)
-						ept.movIteratorRoot();
-					break;
-				case OPERATOR:
-					cout << "PRPCOR: Insert operator: " << token << endl;
-					
-					if (ept.thisNode() == ept.root() && !rootWrote)
-					{
-						ept.thisNode()->data.arithmeticOperator = token[0];
-						rootWrote = true;
-						break;
-					}
-	
-					while (ept.newNode(ept.nodeDataConstructor(token[0])) == nullptr)
-						ept.movIteratorRoot();
-						
-					ept.movIteratorToNewNode();
-					break;
-				case UNKNOW:
-					cout << "PRPCOR: Invalid input: " << token << endl;
-					break;
-			}
-		}
-	}
-	catch (runtime_error *ecpt)
-	{
-		cout << "CATCH: Operation aborted after throwing 'runtime_error':" << endl;
-		cout << "    " << ecpt->what() << endl;
-		delete ecpt;
+		infixToPrefix(infix, prefix);
+		prefixExpressionASTConstructor(AST, prefix);
+
+		cout << "AST Constructor (MRO_NODEDUMPS): ";
+		AST.travesalEachNode_MRO(nodePrint, AST.root());
+		cout << endl << "AST Calculation (LRO_NODETRVAL): " << AST.calculator() << endl;
 	}
 	
-	cout << "AST Constructor (MRO_NODEDUMP): ";
-	ept.travesalEachNode_MRO(nodePrint, ept.root());
-	cout << endl;
-	cout << "AST Parser (LRO_NODETRV): Calculation result: " << ept.calculator() << endl;
 	
 	return 0;
 }
